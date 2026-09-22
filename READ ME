@@ -1,0 +1,349 @@
+# PLSQL Assignment One — Sunrise Supermarket
+
+**Student Name:** Mugisha Igor
+**Student ID:** 27104
+**Group:** D
+**Course:** Database Development with PL/SQL (INSY 8311)
+**Instructor:** Eric Maniraguha | **TA:** Afanyu Emmanuel
+**Tool Used:** _[Fill in which DBMS you actually ran this in — Oracle SQL Developer, PostgreSQL, MySQL, etc. The queries below use standard ANSI SQL/CTE/window-function syntax that runs on Oracle with no changes.]_
+
+---
+
+## 1. Business Scenario Summary
+
+Sunrise Supermarket sells products to customers, who place orders containing one or more items. Management wants to understand **who their customers are, what they buy, and how sales are trending over time.**
+
+The database has four tables:
+
+- **customers** — customer_id, customer_name, email, city
+- **products** — product_id, product_name, category, price
+- **orders** — order_id, customer_id, order_date
+- **order_items** — order_item_id, order_id, product_id, quantity
+
+The sample data models **6 customers**, **9 products across 4 categories** (Groceries, Dairy, Beverages, Household), **16 orders**, and **28 order items**, spread across six weeks (August 3 – September 14, 2026) so trends are visible. One customer (Felix Niyonzima) has deliberately been given zero orders, to properly test the LEFT JOIN in Question 3.
+
+---
+
+## 2. Schema and Sample Data
+
+```sql
+CREATE TABLE customers (
+  customer_id   NUMBER PRIMARY KEY,
+  customer_name VARCHAR2(100),
+  email         VARCHAR2(100),
+  city          VARCHAR2(50)
+);
+
+CREATE TABLE products (
+  product_id   NUMBER PRIMARY KEY,
+  product_name VARCHAR2(100),
+  category     VARCHAR2(50),
+  price        NUMBER(10,2)
+);
+
+CREATE TABLE orders (
+  order_id    NUMBER PRIMARY KEY,
+  customer_id NUMBER REFERENCES customers(customer_id),
+  order_date  DATE
+);
+
+CREATE TABLE order_items (
+  order_item_id NUMBER PRIMARY KEY,
+  order_id      NUMBER REFERENCES orders(order_id),
+  product_id    NUMBER REFERENCES products(product_id),
+  quantity      NUMBER
+);
+```
+
+Full `INSERT` statements for all 6 customers, 9 products, 16 orders, and 28 order items are in [`schema_and_data.sql`](./schema_and_data.sql).
+
+---
+
+## 3. Queries, Explanations, and Results
+
+### Q1 — Every order with customer name, city, and order date
+*(INNER JOIN: orders + customers)*
+
+```sql
+SELECT o.order_id, c.customer_name, c.city, o.order_date
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+ORDER BY o.order_date;
+```
+
+**What it answers:** A simple order log — who placed each order, from which city, and when. This is the base view management would use to see raw order activity.
+
+**Result (16 rows, first 5 shown):**
+
+| order_id | customer_name | city | order_date |
+|---|---|---|---|
+| 1001 | Alice Uwase | Kigali | 2026-08-03 |
+| 1002 | Brian Mugisha | Musanze | 2026-08-04 |
+| 1003 | Alice Uwase | Kigali | 2026-08-10 |
+| 1004 | Claudine Ingabire | Kigali | 2026-08-12 |
+| 1005 | David Habimana | Huye | 2026-08-15 |
+| ... | ... | ... | ... |
+
+*(Full 16-row output in query log / screenshot.)*
+
+---
+
+### Q2 — Every order item with product name, category, price, and quantity
+*(JOIN: order_items + products)*
+
+```sql
+SELECT oi.order_id, p.product_name, p.category, p.price, oi.quantity
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+ORDER BY oi.order_id;
+```
+
+**What it answers:** Line-item detail — exactly what was bought on each order, and at what price. This is the foundation for every revenue calculation later.
+
+**Result (28 rows, first 6 shown):**
+
+| order_id | product_name | category | price | quantity |
+|---|---|---|---|---|
+| 1001 | Basmati Rice 5kg | Groceries | 8500 | 1 |
+| 1001 | Fresh Milk 1L | Dairy | 1200 | 3 |
+| 1002 | Coca-Cola 1.5L | Beverages | 1800 | 2 |
+| 1002 | Mineral Water 1.5L | Beverages | 700 | 4 |
+| 1003 | Cooking Oil 3L | Groceries | 9200 | 1 |
+| 1003 | Dish Soap 750ml | Household | 2100 | 1 |
+| ... | ... | ... | ... | ... |
+
+---
+
+### Q3 — All customers, including those who never ordered
+*(LEFT JOIN: customers + orders)*
+
+```sql
+SELECT c.customer_name, o.order_id, o.order_date
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+ORDER BY c.customer_name;
+```
+
+**What it answers:** A full customer roster, not just active buyers. This is what a LEFT JOIN is for — it keeps every customer row even when there's no matching order, which surfaces inactive customers an INNER JOIN would silently hide.
+
+**Result:**
+
+| customer_name | order_id | order_date |
+|---|---|---|
+| Alice Uwase | 1001 | 2026-08-03 |
+| Alice Uwase | 1003 | 2026-08-10 |
+| Alice Uwase | 1007 | 2026-08-20 |
+| Alice Uwase | 1011 | 2026-09-02 |
+| Alice Uwase | 1016 | 2026-09-14 |
+| Brian Mugisha | 1002 | 2026-08-04 |
+| Brian Mugisha | 1006 | 2026-08-18 |
+| Brian Mugisha | 1012 | 2026-09-05 |
+| Claudine Ingabire | 1004 | 2026-08-12 |
+| Claudine Ingabire | 1009 | 2026-08-27 |
+| Claudine Ingabire | 1014 | 2026-09-10 |
+| David Habimana | 1005 | 2026-08-15 |
+| David Habimana | 1010 | 2026-08-30 |
+| David Habimana | 1015 | 2026-09-12 |
+| Esther Mukamana | 1008 | 2026-08-22 |
+| Esther Mukamana | 1013 | 2026-09-08 |
+| **Felix Niyonzima** | **NULL** | **NULL** |
+
+**Note:** Felix Niyonzima appears with NULLs — proof the LEFT JOIN is preserving customers with no orders, exactly as required.
+
+---
+
+### Q4 — Customers who spent above the average customer spend
+*(CTE for per-customer totals, then filter against the average)*
+
+```sql
+WITH customer_totals AS (
+  SELECT c.customer_id, c.customer_name,
+         SUM(oi.quantity * p.price) AS total_spent
+  FROM customers c
+  JOIN orders o ON o.customer_id = c.customer_id
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  GROUP BY c.customer_id, c.customer_name
+)
+SELECT customer_name, total_spent
+FROM customer_totals
+WHERE total_spent > (SELECT AVG(total_spent) FROM customer_totals)
+ORDER BY total_spent DESC;
+```
+
+**What it answers:** Identifies above-average-value customers — the CTE `customer_totals` computes each customer's lifetime spend once, and the outer query filters against the average of that same CTE, rather than recalculating totals inline.
+
+**Result:**
+
+| customer_name | total_spent |
+|---|---|
+| Alice Uwase | 56000 |
+| David Habimana | 33900 |
+
+*(Average customer spend across all 5 buying customers: **32,860**. Alice and David are the only two above it.)*
+
+---
+
+### Q5 — Rank customers by total amount spent, highest first
+*(Window function: RANK)*
+
+```sql
+WITH customer_totals AS (
+  SELECT c.customer_id, c.customer_name,
+         SUM(oi.quantity * p.price) AS total_spent
+  FROM customers c
+  JOIN orders o ON o.customer_id = c.customer_id
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  GROUP BY c.customer_id, c.customer_name
+)
+SELECT customer_name, total_spent,
+       RANK() OVER (ORDER BY total_spent DESC) AS spend_rank
+FROM customer_totals
+ORDER BY spend_rank;
+```
+
+**What it answers:** A leaderboard of customer value — `RANK()` assigns a position to every customer by total spend, useful for loyalty programs or targeted promotions.
+
+**Result:**
+
+| customer_name | total_spent | spend_rank |
+|---|---|---|
+| Alice Uwase | 56000 | 1 |
+| David Habimana | 33900 | 2 |
+| Claudine Ingabire | 29000 | 3 |
+| Brian Mugisha | 27200 | 4 |
+| Esther Mukamana | 18200 | 5 |
+
+---
+
+### Q6 — Number each customer's orders in the order they were placed
+*(Window function: ROW_NUMBER, partitioned by customer)*
+
+```sql
+SELECT c.customer_name, o.order_id, o.order_date,
+       ROW_NUMBER() OVER (PARTITION BY c.customer_id ORDER BY o.order_date) AS order_seq
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+ORDER BY c.customer_name, order_seq;
+```
+
+**What it answers:** Tracks each customer's order history as a numbered sequence (1st order, 2nd order, 3rd order...) — useful for identifying first-time vs. repeat buyers.
+
+**Result (sample — Alice Uwase, 5 orders):**
+
+| customer_name | order_id | order_date | order_seq |
+|---|---|---|---|
+| Alice Uwase | 1001 | 2026-08-03 | 1 |
+| Alice Uwase | 1003 | 2026-08-10 | 2 |
+| Alice Uwase | 1007 | 2026-08-20 | 3 |
+| Alice Uwase | 1011 | 2026-09-02 | 4 |
+| Alice Uwase | 1016 | 2026-09-14 | 5 |
+
+*(Pattern repeats per customer for all 16 orders — see full output.)*
+
+---
+
+### Q7 — Running total of revenue over time, ordered by order date
+*(Window function: SUM ... OVER, ordered)*
+
+```sql
+WITH order_revenue AS (
+  SELECT o.order_id, o.order_date,
+         SUM(oi.quantity * p.price) AS order_total
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.order_id
+  JOIN products p ON p.product_id = oi.product_id
+  GROUP BY o.order_id, o.order_date
+)
+SELECT order_id, order_date, order_total,
+       SUM(order_total) OVER (ORDER BY order_date, order_id) AS running_total
+FROM order_revenue
+ORDER BY order_date, order_id;
+```
+
+**What it answers:** Shows cumulative revenue growth day by day — the kind of chart management would use to see whether sales are accelerating.
+
+**Result (16 rows, first 6 shown):**
+
+| order_id | order_date | order_total | running_total |
+|---|---|---|---|
+| 1001 | 2026-08-03 | 12100 | 12100 |
+| 1002 | 2026-08-04 | 6400 | 18500 |
+| 1003 | 2026-08-10 | 11300 | 29800 |
+| 1004 | 2026-08-12 | 8800 | 38600 |
+| 1005 | 2026-08-15 | 20200 | 58800 |
+| ... | ... | ... | ... |
+
+Final running total after all 16 orders: **164,300** (total revenue).
+
+---
+
+### Q8 — Days between each customer's current and previous order
+*(Window function: LAG, partitioned by customer)*
+
+```sql
+WITH ordered AS (
+  SELECT c.customer_name, o.order_id, o.order_date,
+         LAG(o.order_date) OVER (PARTITION BY c.customer_id ORDER BY o.order_date) AS prev_date
+  FROM orders o
+  JOIN customers c ON c.customer_id = o.customer_id
+)
+SELECT customer_name, order_id, order_date, prev_date,
+       CASE WHEN prev_date IS NOT NULL
+            THEN order_date - prev_date
+            ELSE NULL END AS days_since_previous
+FROM ordered
+ORDER BY customer_name, order_date;
+```
+
+*(Note: in Oracle, `order_date - prev_date` on two DATE columns returns the day difference directly as a number — no CAST needed there. The CAST/julianday version was only required to test this in SQLite.)*
+
+**What it answers:** Measures purchase frequency per customer — how many days pass between repeat orders, which is a direct signal of buying habits and could feed into re-engagement campaigns for customers whose gap is growing.
+
+**Result:**
+
+| customer_name | order_id | order_date | prev_date | days_since_previous |
+|---|---|---|---|---|
+| Alice Uwase | 1001 | 2026-08-03 | NULL | NULL |
+| Alice Uwase | 1003 | 2026-08-10 | 2026-08-03 | 7 |
+| Alice Uwase | 1007 | 2026-08-20 | 2026-08-10 | 10 |
+| Alice Uwase | 1011 | 2026-09-02 | 2026-08-20 | 13 |
+| Alice Uwase | 1016 | 2026-09-14 | 2026-09-02 | 12 |
+| Brian Mugisha | 1002 | 2026-08-04 | NULL | NULL |
+| Brian Mugisha | 1006 | 2026-08-18 | 2026-08-04 | 14 |
+| Brian Mugisha | 1012 | 2026-09-05 | 2026-08-18 | 18 |
+| Claudine Ingabire | 1004 | 2026-08-12 | NULL | NULL |
+| Claudine Ingabire | 1009 | 2026-08-27 | 2026-08-12 | 15 |
+| Claudine Ingabire | 1014 | 2026-09-10 | 2026-08-27 | 14 |
+| David Habimana | 1005 | 2026-08-15 | NULL | NULL |
+| David Habimana | 1010 | 2026-08-30 | 2026-08-15 | 15 |
+| David Habimana | 1015 | 2026-09-12 | 2026-08-30 | 13 |
+| Esther Mukamana | 1008 | 2026-08-22 | NULL | NULL |
+| Esther Mukamana | 1013 | 2026-09-08 | 2026-08-22 | 17 |
+
+---
+
+## 4. Business Interpretation
+
+- **Total revenue across the period:** 164,300 (currency units), from 16 orders and 28 line items over six weeks.
+- **Customer concentration:** Alice Uwase alone accounts for 56,000 — roughly **34% of total revenue** — despite being just 1 of 6 customers. She's clearly the highest-value customer and worth retaining with loyalty perks.
+- **Above-average spenders:** Only Alice and David exceed the average customer spend (32,860). The other three active buyers (Claudine, Brian, Esther) sit below average, suggesting the customer base has a "long tail" — a couple of high spenders carrying more weight than the rest.
+- **Inactive customer:** Felix Niyonzima has never placed an order. This is exactly the kind of gap a LEFT JOIN surfaces that an INNER JOIN would hide — management should flag Felix for a re-engagement offer.
+- **Purchase frequency:** Order gaps per customer range from 7 to 18 days, with most customers ordering roughly every 2 weeks. Brian Mugisha's gap is widening (14 → 18 days), which could be an early signal of drifting away — worth watching.
+- **Revenue trend:** The running total (Q7) climbs steadily with no big drop-offs, indicating consistent — not spiky — sales across the six-week window.
+
+## 5. Challenges Encountered and How They Were Resolved
+
+- **Challenge:** Computing "above average" spend required avoiding two separate aggregation passes.
+  **Resolution:** Used a CTE (`customer_totals`) once, then referenced it twice — once for the filtered rows, once inside the `AVG()` subquery — instead of repeating the JOIN/GROUP BY logic.
+- **Challenge:** `LAG()` returns NULL for each customer's very first order (no previous order to compare against).
+  **Resolution:** Wrapped the date difference in a `CASE WHEN prev_date IS NOT NULL` so first orders show a clean NULL "days since previous" instead of an error.
+- **Challenge:** Making sure the LEFT JOIN in Q3 actually had something to prove.
+  **Resolution:** Deliberately included one customer (Felix) with zero orders in the sample data, rather than trusting the JOIN logic on data where every customer happens to have ordered.
+
+## 6. Submission Details
+
+- **Repository Link:** _[Paste your GitHub URL here once created, e.g. https://github.com/yourusername/assignment_1_mugisha_igor-27104]_
+- **DBMS Tool Used:** _[Fill in]_
+- **How to Run:** Run `schema_and_data.sql` first to create tables and load sample data, then run each query from the "Queries, Explanations, and Results" section above in order.
